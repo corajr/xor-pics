@@ -2,8 +2,6 @@ open Canvas;
 open Canvas.Util;
 open ImageGenerator;
 
-let logo: string = [%bs.raw {|require('./logo.svg')|}];
-
 type state = {
   canvasRef: ref(option(Dom.element)),
   images: ref(Belt.Map.String.t(Dom.element)),
@@ -31,7 +29,6 @@ let setCanvasRef = (width, height, theRef, {ReasonReact.state}) => {
 let draw = (width, height, imageKey, {ReasonReact.state}) =>
   switch (state.canvasRef^, Belt.Map.String.get(state.images^, imageKey)) {
   | (Some(canvas), Some(src)) =>
-    Js.log("redrawing");
     let ctx = getContext(canvas);
 
     let imageData =
@@ -68,10 +65,28 @@ let draw = (width, height, imageKey, {ReasonReact.state}) =>
 module Clickable = {
   let component = ReasonReact.statelessComponent("Clickable");
 
-  let make = (~render, ~name, ~onClick, _children) => {
+  let make =
+      (
+        ~render,
+        ~name,
+        ~onClick,
+        ~outerStyle=ReactDOMRe.Style.make(
+                      ~width="128px",
+                      ~height="128px",
+                      (),
+                    ),
+        ~innerStyle=ReactDOMRe.Style.make(
+                      ~transform="scale(0.5)",
+                      ~transformOrigin="top left",
+                      (),
+                    ),
+        _children,
+      ) => {
     ...component,
     render: _self =>
-      <div onClick=(_evt => onClick(name))> (render(name)) </div>,
+      <div style=outerStyle onClick=(_evt => onClick(name))>
+        <div style=innerStyle> (render(name)) </div>
+      </div>,
   };
 };
 
@@ -90,10 +105,22 @@ let make = (~width=256, ~height=256, _children) => {
     let gamutConstantColor = 191;
 
     <div>
-      <div style=(ReactDOMRe.Style.make(~position="fixed", ()))>
+      <div
+        style=(
+          ReactDOMRe.Style.make(
+            ~position="fixed",
+            ~left="50%",
+            ~transform="translateX(-50%)",
+            ~zIndex="1",
+            ~width="256px",
+            (),
+          )
+        )>
         <Clickable
           name="self"
           onClick
+          outerStyle=(ReactDOMRe.Style.make())
+          innerStyle=(ReactDOMRe.Style.make())
           render=(
             name =>
               <canvas
@@ -105,16 +132,15 @@ let make = (~width=256, ~height=256, _children) => {
           )
         />
       </div>
-      <div style=(ReactDOMRe.Style.make(~marginLeft="384px", ()))>
+      <div
+        style=(ReactDOMRe.Style.make(~position="relative", ~top="288px", ()))>
         <div
           style=(
             ReactDOMRe.Style.make(
               ~display="flex",
               ~flexDirection="row",
               ~flexWrap="wrap",
-              ~width="100vw",
-              ~transform="scale(0.5)",
-              ~transformOrigin="top left",
+              ~justifyContent="center",
               (),
             )
           )>
@@ -124,8 +150,21 @@ let make = (~width=256, ~height=256, _children) => {
             render=(
               name =>
                 <Img
-                  setRef=(addToMap(name, self.state.images))
-                  src="images/xorpics.png"
+                  setRef=(
+                    theRef => {
+                      addToMap(name, self.state.images, theRef);
+                      switch (
+                        self.state.canvasRef^,
+                        Js.Nullable.toOption(theRef),
+                      ) {
+                      | (Some(canvas), Some(img)) =>
+                        let ctx = getContext(canvas);
+                        Ctx.drawImage(ctx, ~image=img, ~dx=0, ~dy=0);
+                      | _ => ()
+                      };
+                    }
+                  )
+                  src="images/logo.png"
                   width
                   height
                 />
