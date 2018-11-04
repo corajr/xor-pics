@@ -26,6 +26,48 @@ let setCanvasRef = (width, height, theRef, {ReasonReact.state}) => {
   };
 };
 
+let transformCanvas =
+    (
+      f: Js.Typed_array.Uint8ClampedArray.t => unit,
+      width: int,
+      height: int,
+      canvas: Dom.element,
+    )
+    : unit => {
+  let ctx = getContext(canvas);
+  let imageData = Ctx.getImageData(ctx, ~sx=0, ~sy=0, ~sw=width, ~sh=height);
+  f(dataGet(imageData));
+
+  Ctx.putImageData(ctx, ~imageData, ~dx=0, ~dy=0);
+};
+
+let rotate = (f, width, height, (r, g, b), {ReasonReact.state}) =>
+  switch (state.canvasRef^) {
+  | Some(canvas) =>
+    transformCanvas(
+      rawNew => {
+        let rawNew = uint8ClampedToArrayInt(rawNew);
+        let n = Array.length(rawNew) / 4;
+        for (i in 0 to n - 1) {
+          let offset = i * 4;
+          rawNew[offset] = f(rawNew[offset], r);
+          rawNew[offset + 1] = f(rawNew[offset + 1], g);
+          rawNew[offset + 2] = f(rawNew[offset + 2], b);
+        };
+      },
+      width,
+      height,
+      canvas,
+    )
+
+  | None => ()
+  };
+
+let rotateL = rotate(Bits.circShiftL);
+let rotateR = rotate(Bits.circShiftR);
+
+let setHref = [%bs.raw (el, v) => "el.href = v;"];
+
 let draw = (width, height, imageKey, {ReasonReact.state}) =>
   switch (state.canvasRef^, Belt.Map.String.get(state.images^, imageKey)) {
   | (Some(canvas), Some(src)) =>
@@ -46,19 +88,22 @@ let draw = (width, height, imageKey, {ReasonReact.state}) =>
       ~dw=width,
       ~dh=height,
     );
-    let newImageData =
-      Ctx.getImageData(ctx, ~sx=0, ~sy=0, ~sw=width, ~sh=height);
 
-    let rawNew = uint8ClampedToArrayInt(dataGet(newImageData));
-    for (i in 0 to n - 1) {
-      let offset = i * 4;
-      rawOld[offset] = rawOld[offset] lxor rawNew[offset];
-      rawOld[offset + 1] = rawOld[offset + 1] lxor rawNew[offset + 1];
-      rawOld[offset + 2] = rawOld[offset + 2] lxor rawNew[offset + 2];
-      rawOld[offset + 3] = max(rawOld[offset + 3], rawNew[offset + 3]);
-    };
-
-    Ctx.putImageData(ctx, ~imageData, ~dx=0, ~dy=0);
+    transformCanvas(
+      rawNew => {
+        let rawNew = uint8ClampedToArrayInt(rawNew);
+        for (i in 0 to n - 1) {
+          let offset = i * 4;
+          rawNew[offset] = rawOld[offset] lxor rawNew[offset];
+          rawNew[offset + 1] = rawOld[offset + 1] lxor rawNew[offset + 1];
+          rawNew[offset + 2] = rawOld[offset + 2] lxor rawNew[offset + 2];
+          rawNew[offset + 3] = max(rawOld[offset + 3], rawNew[offset + 3]);
+        };
+      },
+      width,
+      height,
+      canvas,
+    );
   | _ => ()
   };
 
@@ -90,6 +135,32 @@ module Clickable = {
   };
 };
 
+module RotationControl = {
+  let component = ReasonReact.statelessComponent("RotationControl");
+
+  let make = (~height, ~rotationF, ~label, ~color, _children) => {
+    ...component,
+    render: _self =>
+      <button
+        style=(
+          ReactDOMRe.Style.make(
+            ~background="none",
+            ~color,
+            ~border="none",
+            ~fontSize="24px",
+            ~textAlign="center",
+            ~flexGrow="1",
+            ~margin="0px",
+            ~padding="0px",
+            (),
+          )
+        )
+        onClick=(_evt => rotationF())>
+        (ReasonReact.string(label))
+      </button>,
+  };
+};
+
 let component = ReasonReact.reducerComponent(__MODULE__);
 
 let make = (~width=256, ~height=256, _children) => {
@@ -101,6 +172,44 @@ let make = (~width=256, ~height=256, _children) => {
   reducer: ((), _state) => ReasonReact.NoUpdate,
   render: self => {
     let onClick = name => draw(width, height, name, self);
+    let rotationPanel = (f, label) =>
+      <div
+        style=(
+          ReactDOMRe.Style.make(
+            ~display="flex",
+            ~flexDirection="column",
+            ~flexGrow="1",
+            (),
+          )
+        )>
+        <RotationControl
+          rotationF=(_ => f(width, height, (1, 0, 0), self))
+          label
+          color="red"
+          height
+        />
+        <RotationControl
+          rotationF=(_ => f(width, height, (0, 1, 0), self))
+          label
+          color="green"
+          height
+        />
+        <RotationControl
+          rotationF=(_ => f(width, height, (0, 0, 1), self))
+          label
+          color="blue"
+          height
+        />
+        <RotationControl
+          rotationF=(_ => f(width, height, (1, 1, 1), self))
+          label
+          color="white"
+          height
+        />
+      </div>;
+    let rotationPanelL = rotationPanel(rotateL, {j|←|j});
+    let rotationPanelR = rotationPanel(rotateR, {j|→|j});
+
     let fillConstantColor = 191;
     let gamutConstantColor = 191;
 
@@ -109,31 +218,84 @@ let make = (~width=256, ~height=256, _children) => {
         style=(
           ReactDOMRe.Style.make(
             ~position="fixed",
-            ~left="50%",
-            ~transform="translateX(-50%)",
             ~zIndex="1",
-            ~width="256px",
+            ~width="100vw",
+            ~display="flex",
+            ~flexDirection="column",
+            ~background="rgba(0,0,0,0.9)",
             (),
           )
         )>
-        <Clickable
-          name="self"
-          onClick
-          outerStyle=(ReactDOMRe.Style.make())
-          innerStyle=(ReactDOMRe.Style.make())
-          render=(
-            name =>
-              <canvas
-                ref=(self.handle(setCanvasRef(width, height)))
-                style=(ReactDOMRe.Style.make(~border="1px solid black", ()))
-                width=(Js.Int.toString(width))
-                height=(Js.Int.toString(height))
-              />
-          )
-        />
+        <div
+          style=(
+            ReactDOMRe.Style.make(
+              ~display="flex",
+              ~flexDirection="row",
+              ~justifyContent="space-between",
+              (),
+            )
+          )>
+          rotationPanelL
+          <Clickable
+            name="self"
+            onClick
+            outerStyle=(
+              ReactDOMRe.Style.make(
+                ~width=Js.Int.toString(width) ++ "px",
+                ~background="black",
+                (),
+              )
+            )
+            innerStyle=(ReactDOMRe.Style.make())
+            render=(
+              _name =>
+                <canvas
+                  style=(ReactDOMRe.Style.make(~border="1px solid white", ()))
+                  ref=(self.handle(setCanvasRef(width, height)))
+                  width=(Js.Int.toString(width))
+                  height=(Js.Int.toString(height))
+                />
+            )
+          />
+          rotationPanelR
+        </div>
+        <div
+          style=(
+            ReactDOMRe.Style.make(
+              ~display="flex",
+              ~flexDirection="row",
+              ~justifyContent="space-between",
+              ~fontSize="24px",
+              (),
+            )
+          )>
+          <a
+            style=(
+              ReactDOMRe.Style.make(
+                ~color="white",
+                ~width="100vw",
+                ~textAlign="center",
+                ~textDecoration="none",
+                (),
+              )
+            )
+            download="xor-pics.png"
+            onClick=(
+              evt =>
+                switch (self.state.canvasRef^) {
+                | Some(canvas) =>
+                  let el = ReactEvent.Mouse.target(evt);
+                  let dataURL = Canvas.toDataURL(canvas);
+                  setHref(el, dataURL);
+                | None => ()
+                }
+            )>
+            (ReasonReact.string({j|⭳|j}))
+          </a>
+        </div>
       </div>
       <div
-        style=(ReactDOMRe.Style.make(~position="relative", ~top="288px", ()))>
+        style=(ReactDOMRe.Style.make(~position="relative", ~top="320px", ()))>
         <div
           style=(
             ReactDOMRe.Style.make(

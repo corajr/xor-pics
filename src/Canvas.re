@@ -72,6 +72,9 @@ module Ctx = {
 external getContext : (Dom.element, [@bs.as "2d"] _) => Ctx.t = "getContext";
 
 [@bs.send]
+external toDataURL : (Dom.element, [@bs.as "image/png"] _) => string = "";
+
+[@bs.send]
 external getContextWithAttrs :
   (Dom.element, [@bs.as "2d"] _, Js.t('a)) => Ctx.t =
   "getContext";
