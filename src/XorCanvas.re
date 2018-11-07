@@ -41,31 +41,6 @@ let transformCanvas =
   Ctx.putImageData(ctx, ~imageData, ~dx=0, ~dy=0);
 };
 
-let rotate = (f, width, height, (r, g, b), {ReasonReact.state}) =>
-  switch (state.canvasRef^) {
-  | Some(canvas) =>
-    transformCanvas(
-      rawNew => {
-        let rawNew = uint8ClampedToArrayInt(rawNew);
-        let n = Array.length(rawNew) / 4;
-        for (i in 0 to n - 1) {
-          let offset = i * 4;
-          rawNew[offset] = f(rawNew[offset], r);
-          rawNew[offset + 1] = f(rawNew[offset + 1], g);
-          rawNew[offset + 2] = f(rawNew[offset + 2], b);
-        };
-      },
-      width,
-      height,
-      canvas,
-    )
-
-  | None => ()
-  };
-
-let rotateL = rotate(Bits.circShiftL);
-let rotateR = rotate(Bits.circShiftR);
-
 let setHref = [%bs.raw (el, v) => "el.href = v;"];
 
 let draw = (width, height, imageKey, {ReasonReact.state}) =>
@@ -172,44 +147,6 @@ let make = (~width=256, ~height=256, _children) => {
   reducer: ((), _state) => ReasonReact.NoUpdate,
   render: self => {
     let onClick = name => draw(width, height, name, self);
-    let rotationPanel = (f, label) =>
-      <div
-        style=(
-          ReactDOMRe.Style.make(
-            ~display="flex",
-            ~flexDirection="column",
-            ~flexGrow="1",
-            (),
-          )
-        )>
-        <RotationControl
-          rotationF=(_ => f(width, height, (1, 0, 0), self))
-          label
-          color="red"
-          height
-        />
-        <RotationControl
-          rotationF=(_ => f(width, height, (0, 1, 0), self))
-          label
-          color="green"
-          height
-        />
-        <RotationControl
-          rotationF=(_ => f(width, height, (0, 0, 1), self))
-          label
-          color="blue"
-          height
-        />
-        <RotationControl
-          rotationF=(_ => f(width, height, (1, 1, 1), self))
-          label
-          color="white"
-          height
-        />
-      </div>;
-    let rotationPanelL = rotationPanel(rotateL, {j|←|j});
-    let rotationPanelR = rotationPanel(rotateR, {j|→|j});
-
     let fillConstantColor = 191;
     let gamutConstantColor = 191;
 
@@ -219,7 +156,9 @@ let make = (~width=256, ~height=256, _children) => {
           ReactDOMRe.Style.make(
             ~position="fixed",
             ~zIndex="1",
-            ~width="100vw",
+            ~left="50%",
+            ~transform="translateX(-50%)",
+            ~width=Js.Int.toString(width) ++ "px",
             ~display="flex",
             ~flexDirection="column",
             ~background="rgba(0,0,0,0.9)",
@@ -235,7 +174,6 @@ let make = (~width=256, ~height=256, _children) => {
               (),
             )
           )>
-          rotationPanelL
           <Clickable
             name="self"
             onClick
@@ -257,7 +195,6 @@ let make = (~width=256, ~height=256, _children) => {
                 />
             )
           />
-          rotationPanelR
         </div>
         <div
           style=(
@@ -273,7 +210,7 @@ let make = (~width=256, ~height=256, _children) => {
             style=(
               ReactDOMRe.Style.make(
                 ~color="white",
-                ~width="100vw",
+                ~width="100%",
                 ~textAlign="center",
                 ~textDecoration="none",
                 (),
@@ -290,7 +227,17 @@ let make = (~width=256, ~height=256, _children) => {
                 | None => ()
                 }
             )>
-            (ReasonReact.string({j|⭳|j}))
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              style=(ReactDOMRe.Style.make(~pointerEvents="none", ()))
+              viewBox="0 0 24 24">
+              <path
+                fill="#fff"
+                d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"
+              />
+            </svg>
           </a>
         </div>
       </div>
