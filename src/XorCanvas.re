@@ -528,6 +528,19 @@ let make = (~width=256, ~height=256, _children) => {
             )
           />
           <Clickable
+            name="planes"
+            onClick
+            render=(
+              name =>
+                <Img
+                  setRef=(addToMap(name, self.state.images))
+                  src="images/planes.png"
+                  width
+                  height
+                />
+            )
+          />
+          <Clickable
             name="cats"
             onClick
             render=(
